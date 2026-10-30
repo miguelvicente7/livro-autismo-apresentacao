@@ -15,6 +15,7 @@ const btnStart = document.getElementById("btn-start");
 const btnToc = document.getElementById("btn-toc");
 
 const SWIPE_MIN = 35;
+let suppressClickUntil = 0;
 const FLIP_CLASSES = [
   "active",
   "next-ready",
@@ -27,7 +28,6 @@ let current = 0;
 let flipping = false;
 let flipTimer = null;
 let flipTargetIndex = null;
-let flipAnimEl = null;
 
 const prefersReducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -86,10 +86,11 @@ const updateUI = () => {
   const total = pages.length;
   progressBar.style.width = `${((current + 1) / total) * 100}%`;
   pageIndicator.textContent = pages[current].dataset.title || "";
-  prevBtn.disabled = current === 0 || flipping;
-  nextBtn.disabled = current === total - 1 || flipping;
-  edgePrev.disabled = current === 0 || flipping;
-  edgeNext.disabled = current === total - 1 || flipping;
+  // Nunca desabilita por "flipping" — evita capa travada se a animação falhar
+  prevBtn.disabled = current === 0;
+  nextBtn.disabled = current === total - 1;
+  edgePrev.disabled = current === 0;
+  edgeNext.disabled = current === total - 1;
   nextBtn.textContent = current === total - 1 ? "Fim" : "Virar página →";
 
   tocButtons.forEach((btn, i) => {
@@ -108,22 +109,7 @@ const cancelPendingFlip = () => {
     window.clearTimeout(flipTimer);
     flipTimer = null;
   }
-  if (flipAnimEl) {
-    flipAnimEl.removeEventListener("animationend", onFlipAnimationEnd);
-    flipAnimEl = null;
-  }
   flipTargetIndex = null;
-};
-
-const onFlipAnimationEnd = (event) => {
-  if (event.target !== flipAnimEl) return;
-  if (event.animationName !== "flipForward" && event.animationName !== "flipBack") {
-    return;
-  }
-  const target = flipTargetIndex;
-  cancelPendingFlip();
-  if (target == null) return;
-  settle(target);
 };
 
 const settle = (index) => {
@@ -132,7 +118,7 @@ const settle = (index) => {
   const safeIndex = Math.max(0, Math.min(index, pages.length - 1));
   const nextPage = pages[safeIndex];
 
-  // Mostra a página destino ANTES de limpar as outras — evita flash marrom
+  // Destino visível antes de limpar as outras — evita flash marrom
   nextPage.classList.add("active");
   nextPage.classList.remove(
     "next-ready",
@@ -153,20 +139,18 @@ const settle = (index) => {
   updateUI();
 };
 
-const afterFlip = (nextIndex, animEl) => {
+const afterFlip = (nextIndex) => {
   cancelPendingFlip();
   flipTargetIndex = nextIndex;
-  flipAnimEl = animEl || null;
 
   const duration = getFlipMs();
-  if (duration <= 0 || !animEl) {
+  if (duration <= 0) {
     settle(nextIndex);
     return;
   }
 
-  animEl.addEventListener("animationend", onFlipAnimationEnd);
-  // Fallback se animationend não disparar (aba em background, etc.)
-  flipTimer = window.setTimeout(() => settle(nextIndex), duration + 80);
+  // Só timeout (sem animationend): mais previsível no mobile
+  flipTimer = window.setTimeout(() => settle(nextIndex), duration + 50);
 };
 
 const preparePair = (fromIndex, toIndex) => {
@@ -177,7 +161,10 @@ const preparePair = (fromIndex, toIndex) => {
 
 const flipForward = () => {
   if (current >= pages.length - 1) return;
-  if (flipping) settle(flipTargetIndex ?? current);
+  if (flipping) {
+    settle(flipTargetIndex ?? current);
+  }
+  if (current >= pages.length - 1) return;
 
   const fromIndex = current;
   const toIndex = fromIndex + 1;
@@ -191,27 +178,34 @@ const flipForward = () => {
   }
 
   flipping = true;
+  flipTargetIndex = toIndex;
   bookShell.classList.add("is-flipping");
-  updateUI();
 
-  // Destino visível por baixo antes de tirar a página atual
-  to.classList.remove(...FLIP_CLASSES);
-  clearInlineFlipStyles(to);
+  // Destino por baixo ANTES de tirar a atual
+  clearFlipClasses(to);
   to.classList.add("next-ready");
   preparePair(fromIndex, toIndex);
 
-  from.classList.remove("next-ready", "prev-ready", "flipping-back");
+  from.classList.remove(
+    "next-ready",
+    "prev-ready",
+    "flipping-forward",
+    "flipping-back"
+  );
   from.classList.add("active");
   void from.offsetWidth;
   from.classList.remove("active");
   from.classList.add("flipping-forward");
 
-  afterFlip(toIndex, from);
+  afterFlip(toIndex);
 };
 
 const flipBack = () => {
   if (current <= 0) return;
-  if (flipping) settle(flipTargetIndex ?? current);
+  if (flipping) {
+    settle(flipTargetIndex ?? current);
+  }
+  if (current <= 0) return;
 
   const fromIndex = current;
   const toIndex = fromIndex - 1;
@@ -225,35 +219,33 @@ const flipBack = () => {
   }
 
   flipping = true;
+  flipTargetIndex = toIndex;
   bookShell.classList.add("is-flipping");
-  updateUI();
 
-  from.classList.remove(...FLIP_CLASSES);
-  clearInlineFlipStyles(from);
+  clearFlipClasses(from);
   from.classList.add("active");
 
-  to.classList.remove(...FLIP_CLASSES);
-  clearInlineFlipStyles(to);
+  clearFlipClasses(to);
   preparePair(fromIndex, toIndex);
 
   void to.offsetWidth;
   to.classList.add("flipping-back");
 
-  afterFlip(toIndex, to);
+  afterFlip(toIndex);
 };
 
 const goTo = (index, options = {}) => {
   const { fromToc = false } = options;
   if (index < 0 || index >= pages.length) return;
-  if (index === current && !flipping) return;
 
-  // Interrompe virada em andamento em vez de ignorar o clique
-  if (flipping) settle(flipTargetIndex ?? current);
+  if (flipping) {
+    settle(flipTargetIndex ?? current);
+  }
   if (index === current) return;
 
   const distance = Math.abs(index - current);
 
-  // Sumário / salto longo: troca instantânea (sem 3D) — evita lag e tela marrom
+  // Sumário / salto longo: instantâneo
   if (fromToc || distance > 1 || prefersReducedMotion()) {
     settle(index);
     return;
@@ -277,7 +269,6 @@ const closeToc = () => {
 
 tocToggle.setAttribute("aria-expanded", "false");
 tocToggle.setAttribute("aria-controls", "toc");
-toc.id = toc.id || "toc";
 
 tocToggle.addEventListener("click", openToc);
 tocClose.addEventListener("click", closeToc);
@@ -306,11 +297,18 @@ edgeNext.addEventListener("click", (e) => {
 });
 
 btnStart?.addEventListener("click", (e) => {
+  e.preventDefault();
   e.stopPropagation();
+  if (Date.now() < suppressClickUntil) return;
   flipForward();
 });
 
-btnToc?.addEventListener("click", openToc);
+btnToc?.addEventListener("click", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (Date.now() < suppressClickUntil) return;
+  openToc();
+});
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight" || e.key === "PageDown") {
@@ -334,9 +332,10 @@ let swipeLocked = null;
 
 const isSwipeBlockedTarget = (target) => {
   if (!(target instanceof Element)) return true;
+  // Não bloqueia .btn-start — na capa o swipe precisa funcionar na área do botão também
   return Boolean(
     target.closest(
-      ".book-nav, .book-header, .toc, .toc-overlay, .btn-start, #btn-toc, a, input, textarea"
+      ".book-nav, .book-header, .toc, .toc-overlay, a, input, textarea"
     )
   );
 };
@@ -381,6 +380,9 @@ const onSwipeEnd = (x, y) => {
 
   if (!wasHorizontal) return;
   if (Math.abs(dx) < SWIPE_MIN) return;
+
+  // Evita que o tap/click do botão da capa dispare logo após o swipe
+  suppressClickUntil = Date.now() + 350;
 
   if (dx < 0) flipForward();
   else flipBack();

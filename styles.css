@@ -174,7 +174,6 @@ body {
   opacity: 0;
   pointer-events: none;
   z-index: 1;
-  contain: layout paint;
   box-shadow:
     inset -18px 0 36px rgba(0, 0, 0, 0.035),
     0 0 0 1px rgba(120, 90, 60, 0.1);

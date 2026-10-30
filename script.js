@@ -15,26 +15,48 @@ const btnStart = document.getElementById("btn-start");
 const btnToc = document.getElementById("btn-toc");
 
 const SWIPE_MIN = 40;
+const FLIP_STATE_CLASSES = [
+  "active",
+  "next-ready",
+  "flipping-forward",
+  "flipping-back",
+  "is-leaving",
+  "is-entering",
+];
+
 let current = 0;
+let flipping = false;
+let flipTimer = null;
+let flipTarget = null;
 let suppressClickUntil = 0;
 
 const prefersReducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/* Remove resíduos das viradas 3D antigas */
+const getFlipMs = () => {
+  if (prefersReducedMotion()) return 0;
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue("--flip-ms")
+    .trim();
+  if (!raw) return 650;
+  if (raw.endsWith("ms")) return parseFloat(raw) || 650;
+  if (raw.endsWith("s")) return (parseFloat(raw) || 0.65) * 1000;
+  return parseFloat(raw) || 650;
+};
+
 pages.forEach((page) => {
-  page.classList.remove(
-    "next-ready",
-    "prev-ready",
-    "flipping-forward",
-    "flipping-back",
-    "under-flip"
-  );
-  page.style.transform = "";
-  page.style.transition = "";
-  page.style.animation = "";
-  page.querySelector(".fold-shade")?.remove();
-  page.querySelector(".under-dim")?.remove();
+  if (!page.querySelector(".fold-shade")) {
+    const fold = document.createElement("div");
+    fold.className = "fold-shade";
+    fold.setAttribute("aria-hidden", "true");
+    page.appendChild(fold);
+  }
+  if (!page.querySelector(".under-dim")) {
+    const dim = document.createElement("div");
+    dim.className = "under-dim";
+    dim.setAttribute("aria-hidden", "true");
+    page.appendChild(dim);
+  }
 });
 
 const tocButtons = pages.map((page, index) => {
@@ -43,7 +65,7 @@ const tocButtons = pages.map((page, index) => {
   btn.type = "button";
   btn.textContent = title;
   btn.addEventListener("click", () => {
-    goTo(index);
+    goTo(index, { instant: true });
     closeToc();
   });
   tocNav.appendChild(btn);
@@ -71,61 +93,163 @@ const scrollPageToTop = (page) => {
   if (face?.scrollTop) face.scrollTop = 0;
 };
 
-/**
- * Troca de página sem flip 3D — evita tela marrom.
- * Fade curto opcional; reduced-motion = instantâneo.
- */
-const showPage = (index) => {
-  const safeIndex = Math.max(0, Math.min(index, pages.length - 1));
-  if (safeIndex === current && pages[safeIndex].classList.contains("active")) {
-    updateUI();
-    return;
+const clearPageMotion = (page) => {
+  page.classList.remove(...FLIP_STATE_CLASSES);
+  page.style.transform = "";
+  page.style.transition = "";
+  page.style.animation = "";
+  page.style.opacity = "";
+  page.style.zIndex = "";
+  page.style.pointerEvents = "";
+};
+
+const cancelFlipTimer = () => {
+  if (flipTimer) {
+    window.clearTimeout(flipTimer);
+    flipTimer = null;
   }
+};
 
-  const nextPage = pages[safeIndex];
-  const prevPage = pages[current];
-  const useFade = !prefersReducedMotion() && safeIndex !== current;
+/** Mostra só a página alvo — papel do .book cobre qualquer gap */
+const settle = (index) => {
+  cancelFlipTimer();
+  const safeIndex = Math.max(0, Math.min(index, pages.length - 1));
+  const target = pages[safeIndex];
 
-  bookShell.classList.remove("is-flipping");
+  target.classList.add("active");
+  target.classList.remove(
+    "next-ready",
+    "flipping-forward",
+    "flipping-back",
+    "is-leaving",
+    "is-entering"
+  );
+  target.style.transform = "";
+  target.style.transition = "";
+  target.style.animation = "";
 
   pages.forEach((page, i) => {
-    page.classList.remove("active", "is-leaving", "is-entering");
-    if (i !== safeIndex) {
-      page.style.opacity = "";
-      page.style.pointerEvents = "";
-      page.style.zIndex = "";
-    }
+    if (i !== safeIndex) clearPageMotion(page);
   });
 
-  if (useFade && prevPage && prevPage !== nextPage) {
-    prevPage.classList.add("is-leaving");
-    nextPage.classList.add("is-entering", "active");
-    window.setTimeout(() => {
-      prevPage.classList.remove("is-leaving");
-      nextPage.classList.remove("is-entering");
-    }, 220);
-  } else {
-    nextPage.classList.add("active");
-  }
-
   current = safeIndex;
-  scrollPageToTop(nextPage);
+  flipping = false;
+  flipTarget = null;
+  bookShell.classList.remove("is-flipping");
+  scrollPageToTop(target);
   updateUI();
 };
 
-const goTo = (index) => {
+const finishFlip = (index) => {
+  settle(index);
+};
+
+const flipForward = () => {
+  if (current >= pages.length - 1) return;
+  if (flipping) settle(flipTarget ?? current);
+  if (current >= pages.length - 1) return;
+
+  const fromIndex = current;
+  const toIndex = fromIndex + 1;
+  const from = pages[fromIndex];
+  const to = pages[toIndex];
+  const duration = getFlipMs();
+
+  if (duration <= 0) {
+    settle(toIndex);
+    return;
+  }
+
+  flipping = true;
+  flipTarget = toIndex;
+  bookShell.classList.add("is-flipping");
+
+  // Destino visível POR BAIXO antes de virar a atual
+  clearPageMotion(to);
+  to.classList.add("next-ready");
+
+  pages.forEach((page, i) => {
+    if (i !== fromIndex && i !== toIndex) clearPageMotion(page);
+  });
+
+  from.classList.remove("next-ready", "flipping-back", "flipping-forward");
+  from.classList.add("active");
+  void from.offsetWidth;
+  from.classList.remove("active");
+  from.classList.add("flipping-forward");
+
+  cancelFlipTimer();
+  flipTimer = window.setTimeout(() => finishFlip(toIndex), duration + 40);
+};
+
+const flipBack = () => {
+  if (current <= 0) return;
+  if (flipping) settle(flipTarget ?? current);
+  if (current <= 0) return;
+
+  const fromIndex = current;
+  const toIndex = fromIndex - 1;
+  const from = pages[fromIndex];
+  const to = pages[toIndex];
+  const duration = getFlipMs();
+
+  if (duration <= 0) {
+    settle(toIndex);
+    return;
+  }
+
+  flipping = true;
+  flipTarget = toIndex;
+  bookShell.classList.add("is-flipping");
+
+  // Página atual permanece visível por baixo
+  from.classList.remove("next-ready", "flipping-forward", "flipping-back");
+  from.style.transform = "";
+  from.style.animation = "";
+  from.classList.add("active");
+
+  pages.forEach((page, i) => {
+    if (i !== fromIndex && i !== toIndex) clearPageMotion(page);
+  });
+
+  clearPageMotion(to);
+  to.style.transform = "rotateY(-180deg)";
+  void to.offsetWidth;
+  to.classList.add("flipping-back");
+
+  cancelFlipTimer();
+  flipTimer = window.setTimeout(() => finishFlip(toIndex), duration + 40);
+};
+
+const goTo = (index, options = {}) => {
+  const { instant = false } = options;
   if (index < 0 || index >= pages.length) return;
-  showPage(index);
+
+  if (flipping) settle(flipTarget ?? current);
+  if (index === current) return;
+
+  const distance = Math.abs(index - current);
+  if (instant || distance > 1 || prefersReducedMotion()) {
+    settle(index);
+    return;
+  }
+
+  if (index > current) flipForward();
+  else flipBack();
 };
 
 const goNext = () => {
   if (current >= pages.length - 1) return;
-  showPage(current + 1);
+  if (flipping) settle(flipTarget ?? current);
+  if (current >= pages.length - 1) return;
+  flipForward();
 };
 
 const goPrev = () => {
   if (current <= 0) return;
-  showPage(current - 1);
+  if (flipping) settle(flipTarget ?? current);
+  if (current <= 0) return;
+  flipBack();
 };
 
 const openToc = () => {
@@ -309,4 +433,4 @@ bookShell.addEventListener("pointercancel", () => {
   swipeLocked = null;
 });
 
-showPage(0);
+settle(0);

@@ -15,20 +15,44 @@ const btnStart = document.getElementById("btn-start");
 const btnToc = document.getElementById("btn-toc");
 
 const SWIPE_MIN = 35;
+const FLIP_CLASSES = [
+  "active",
+  "next-ready",
+  "prev-ready",
+  "flipping-forward",
+  "flipping-back",
+];
+
 let current = 0;
 let flipping = false;
 let flipTimer = null;
+let flipTargetIndex = null;
+let flipAnimEl = null;
 
-/* Mantém o settle alinhado com --flip-ms (ex.: 550ms no mobile) */
-function getFlipMs() {
+const prefersReducedMotion = () =>
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const getFlipMs = () => {
+  if (prefersReducedMotion()) return 0;
   const raw = getComputedStyle(document.documentElement)
     .getPropertyValue("--flip-ms")
     .trim();
-  if (!raw) return 900;
-  if (raw.endsWith("ms")) return parseFloat(raw) || 900;
-  if (raw.endsWith("s")) return (parseFloat(raw) || 0.9) * 1000;
-  return parseFloat(raw) || 900;
-}
+  if (!raw) return 700;
+  if (raw.endsWith("ms")) return parseFloat(raw) || 700;
+  if (raw.endsWith("s")) return (parseFloat(raw) || 0.7) * 1000;
+  return parseFloat(raw) || 700;
+};
+
+const clearInlineFlipStyles = (page) => {
+  page.style.transform = "";
+  page.style.transition = "";
+  page.style.animation = "";
+};
+
+const clearFlipClasses = (page) => {
+  page.classList.remove(...FLIP_CLASSES);
+  clearInlineFlipStyles(page);
+};
 
 pages.forEach((page) => {
   if (!page.querySelector(".fold-shade")) {
@@ -45,31 +69,20 @@ pages.forEach((page) => {
   }
 });
 
-pages.forEach((page, index) => {
+const tocButtons = pages.map((page, index) => {
   const title = page.dataset.title || `Página ${index + 1}`;
   const btn = document.createElement("button");
   btn.type = "button";
   btn.textContent = title;
   btn.addEventListener("click", () => {
-    goTo(index);
+    goTo(index, { fromToc: true });
     closeToc();
   });
   tocNav.appendChild(btn);
+  return btn;
 });
 
-function clearFlipClasses(page) {
-  page.classList.remove(
-    "active",
-    "next-ready",
-    "prev-ready",
-    "flipping-forward",
-    "flipping-back"
-  );
-  page.style.transform = "";
-  page.style.transition = "";
-}
-
-function updateUI() {
+const updateUI = () => {
   const total = pages.length;
   progressBar.style.width = `${((current + 1) / total) * 100}%`;
   pageIndicator.textContent = pages[current].dataset.title || "";
@@ -79,108 +92,192 @@ function updateUI() {
   edgeNext.disabled = current === total - 1 || flipping;
   nextBtn.textContent = current === total - 1 ? "Fim" : "Virar página →";
 
-  Array.from(tocNav.children).forEach((btn, i) => {
+  tocButtons.forEach((btn, i) => {
     btn.classList.toggle("active", i === current);
   });
-}
+};
 
-function settle(index) {
+const scrollPageToTop = (page) => {
+  if (page.scrollTop) page.scrollTop = 0;
+  const face = page.querySelector(".page-face");
+  if (face?.scrollTop) face.scrollTop = 0;
+};
+
+const cancelPendingFlip = () => {
   if (flipTimer) {
     window.clearTimeout(flipTimer);
     flipTimer = null;
   }
-  pages.forEach(clearFlipClasses);
-  current = index;
-  pages[current].classList.add("active");
+  if (flipAnimEl) {
+    flipAnimEl.removeEventListener("animationend", onFlipAnimationEnd);
+    flipAnimEl = null;
+  }
+  flipTargetIndex = null;
+};
+
+const onFlipAnimationEnd = (event) => {
+  if (event.target !== flipAnimEl) return;
+  if (event.animationName !== "flipForward" && event.animationName !== "flipBack") {
+    return;
+  }
+  const target = flipTargetIndex;
+  cancelPendingFlip();
+  if (target == null) return;
+  settle(target);
+};
+
+const settle = (index) => {
+  cancelPendingFlip();
+
+  const safeIndex = Math.max(0, Math.min(index, pages.length - 1));
+  const nextPage = pages[safeIndex];
+
+  // Mostra a página destino ANTES de limpar as outras — evita flash marrom
+  nextPage.classList.add("active");
+  nextPage.classList.remove(
+    "next-ready",
+    "prev-ready",
+    "flipping-forward",
+    "flipping-back"
+  );
+  clearInlineFlipStyles(nextPage);
+
+  pages.forEach((page, i) => {
+    if (i !== safeIndex) clearFlipClasses(page);
+  });
+
+  current = safeIndex;
   flipping = false;
   bookShell.classList.remove("is-flipping");
+  scrollPageToTop(nextPage);
   updateUI();
-}
+};
 
-function afterFlip(nextIndex) {
-  if (flipTimer) window.clearTimeout(flipTimer);
-  flipTimer = window.setTimeout(() => settle(nextIndex), getFlipMs());
-}
+const afterFlip = (nextIndex, animEl) => {
+  cancelPendingFlip();
+  flipTargetIndex = nextIndex;
+  flipAnimEl = animEl || null;
 
-function flipForward() {
-  if (flipping || current >= pages.length - 1) return;
-  flipping = true;
-  bookShell.classList.add("is-flipping");
-  updateUI();
-
-  const fromIndex = current;
-  const from = pages[fromIndex];
-  const to = pages[fromIndex + 1];
-
-  pages.forEach(clearFlipClasses);
-  to.classList.add("next-ready");
-  void from.offsetWidth;
-  from.classList.add("flipping-forward");
-  afterFlip(fromIndex + 1);
-}
-
-function flipBack() {
-  if (flipping || current <= 0) return;
-  flipping = true;
-  bookShell.classList.add("is-flipping");
-  updateUI();
-
-  const fromIndex = current;
-  const from = pages[fromIndex];
-  const to = pages[fromIndex - 1];
-
-  pages.forEach(clearFlipClasses);
-  from.classList.add("active");
-  void to.offsetWidth;
-  to.classList.add("flipping-back");
-  afterFlip(fromIndex - 1);
-}
-
-function goTo(index) {
-  if (index < 0 || index >= pages.length || flipping) return;
-  if (index === current) return;
-
-  if (Math.abs(index - current) === 1) {
-    if (index > current) flipForward();
-    else flipBack();
+  const duration = getFlipMs();
+  if (duration <= 0 || !animEl) {
+    settle(nextIndex);
     return;
   }
 
-  // Salto no sumário: anima uma virada na direção correta
+  animEl.addEventListener("animationend", onFlipAnimationEnd);
+  // Fallback se animationend não disparar (aba em background, etc.)
+  flipTimer = window.setTimeout(() => settle(nextIndex), duration + 80);
+};
+
+const preparePair = (fromIndex, toIndex) => {
+  pages.forEach((page, i) => {
+    if (i !== fromIndex && i !== toIndex) clearFlipClasses(page);
+  });
+};
+
+const flipForward = () => {
+  if (current >= pages.length - 1) return;
+  if (flipping) settle(flipTargetIndex ?? current);
+
+  const fromIndex = current;
+  const toIndex = fromIndex + 1;
+  const from = pages[fromIndex];
+  const to = pages[toIndex];
+  const duration = getFlipMs();
+
+  if (duration <= 0) {
+    settle(toIndex);
+    return;
+  }
+
   flipping = true;
   bookShell.classList.add("is-flipping");
   updateUI();
 
+  // Destino visível por baixo antes de tirar a página atual
+  to.classList.remove(...FLIP_CLASSES);
+  clearInlineFlipStyles(to);
+  to.classList.add("next-ready");
+  preparePair(fromIndex, toIndex);
+
+  from.classList.remove("next-ready", "prev-ready", "flipping-back");
+  from.classList.add("active");
+  void from.offsetWidth;
+  from.classList.remove("active");
+  from.classList.add("flipping-forward");
+
+  afterFlip(toIndex, from);
+};
+
+const flipBack = () => {
+  if (current <= 0) return;
+  if (flipping) settle(flipTargetIndex ?? current);
+
   const fromIndex = current;
+  const toIndex = fromIndex - 1;
   const from = pages[fromIndex];
-  const to = pages[index];
+  const to = pages[toIndex];
+  const duration = getFlipMs();
 
-  pages.forEach(clearFlipClasses);
-
-  if (index > fromIndex) {
-    to.classList.add("next-ready");
-    from.classList.add("active");
-    void from.offsetWidth;
-    from.classList.remove("active");
-    from.classList.add("flipping-forward");
-  } else {
-    from.classList.add("active");
-    void to.offsetWidth;
-    to.classList.add("flipping-back");
+  if (duration <= 0) {
+    settle(toIndex);
+    return;
   }
 
-  afterFlip(index);
-}
+  flipping = true;
+  bookShell.classList.add("is-flipping");
+  updateUI();
 
-function openToc() {
+  from.classList.remove(...FLIP_CLASSES);
+  clearInlineFlipStyles(from);
+  from.classList.add("active");
+
+  to.classList.remove(...FLIP_CLASSES);
+  clearInlineFlipStyles(to);
+  preparePair(fromIndex, toIndex);
+
+  void to.offsetWidth;
+  to.classList.add("flipping-back");
+
+  afterFlip(toIndex, to);
+};
+
+const goTo = (index, options = {}) => {
+  const { fromToc = false } = options;
+  if (index < 0 || index >= pages.length) return;
+  if (index === current && !flipping) return;
+
+  // Interrompe virada em andamento em vez de ignorar o clique
+  if (flipping) settle(flipTargetIndex ?? current);
+  if (index === current) return;
+
+  const distance = Math.abs(index - current);
+
+  // Sumário / salto longo: troca instantânea (sem 3D) — evita lag e tela marrom
+  if (fromToc || distance > 1 || prefersReducedMotion()) {
+    settle(index);
+    return;
+  }
+
+  if (index > current) flipForward();
+  else flipBack();
+};
+
+const openToc = () => {
   toc.classList.add("open");
   tocOverlay.classList.add("open");
-}
+  tocToggle.setAttribute("aria-expanded", "true");
+};
 
-function closeToc() {
+const closeToc = () => {
   toc.classList.remove("open");
   tocOverlay.classList.remove("open");
-}
+  tocToggle.setAttribute("aria-expanded", "false");
+};
+
+tocToggle.setAttribute("aria-expanded", "false");
+tocToggle.setAttribute("aria-controls", "toc");
+toc.id = toc.id || "toc";
 
 tocToggle.addEventListener("click", openToc);
 tocClose.addEventListener("click", closeToc);
@@ -233,20 +330,19 @@ const SWIPE_RATIO = 1.2;
 let swipeStartX = 0;
 let swipeStartY = 0;
 let swipeActive = false;
-let swipeLocked = null; // "x" | "y" | null
+let swipeLocked = null;
 
-function isSwipeBlockedTarget(target) {
+const isSwipeBlockedTarget = (target) => {
   if (!(target instanceof Element)) return true;
-  // Bloqueia só controles reais — não as bordas do livro
   return Boolean(
     target.closest(
       ".book-nav, .book-header, .toc, .toc-overlay, .btn-start, #btn-toc, a, input, textarea"
     )
   );
-}
+};
 
-function onSwipeStart(x, y, target) {
-  if (flipping || isSwipeBlockedTarget(target)) {
+const onSwipeStart = (x, y, target) => {
+  if (isSwipeBlockedTarget(target)) {
     swipeActive = false;
     return;
   }
@@ -254,10 +350,10 @@ function onSwipeStart(x, y, target) {
   swipeLocked = null;
   swipeStartX = x;
   swipeStartY = y;
-}
+};
 
-function onSwipeMove(x, y, event) {
-  if (!swipeActive || flipping) return;
+const onSwipeMove = (x, y, event) => {
+  if (!swipeActive) return;
 
   const dx = x - swipeStartX;
   const dy = y - swipeStartY;
@@ -267,29 +363,28 @@ function onSwipeMove(x, y, event) {
     swipeLocked = Math.abs(dx) > Math.abs(dy) * 0.85 ? "x" : "y";
   }
 
-  // Gesto horizontal: impede o scroll e prepara a virada
   if (swipeLocked === "x") {
     event.preventDefault();
   }
-}
+};
 
-function onSwipeEnd(x, y) {
+const onSwipeEnd = (x, y) => {
   if (!swipeActive) return;
 
   const dx = x - swipeStartX;
   const dy = y - swipeStartY;
-  const wasHorizontal = swipeLocked === "x" || Math.abs(dx) > Math.abs(dy) * SWIPE_RATIO;
+  const wasHorizontal =
+    swipeLocked === "x" || Math.abs(dx) > Math.abs(dy) * SWIPE_RATIO;
 
   swipeActive = false;
   swipeLocked = null;
 
-  if (flipping) return;
   if (!wasHorizontal) return;
   if (Math.abs(dx) < SWIPE_MIN) return;
 
   if (dx < 0) flipForward();
   else flipBack();
-}
+};
 
 const swipeRoot = stage || bookShell;
 
@@ -330,10 +425,9 @@ swipeRoot.addEventListener(
   { capture: true }
 );
 
-/* Mouse / trackpad no desktop */
 bookShell.addEventListener("pointerdown", (e) => {
   if (e.pointerType === "touch") return;
-  if (flipping || isSwipeBlockedTarget(e.target)) return;
+  if (isSwipeBlockedTarget(e.target)) return;
   onSwipeStart(e.clientX, e.clientY, e.target);
   bookShell.setPointerCapture?.(e.pointerId);
 });

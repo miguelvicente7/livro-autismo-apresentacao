@@ -22,6 +22,7 @@ const FLIP_CLASSES = [
   "prev-ready",
   "flipping-forward",
   "flipping-back",
+  "under-flip",
 ];
 
 let current = 0;
@@ -124,7 +125,8 @@ const settle = (index) => {
     "next-ready",
     "prev-ready",
     "flipping-forward",
-    "flipping-back"
+    "flipping-back",
+    "under-flip"
   );
   clearInlineFlipStyles(nextPage);
 
@@ -222,12 +224,21 @@ const flipBack = () => {
   flipTargetIndex = toIndex;
   bookShell.classList.add("is-flipping");
 
-  clearFlipClasses(from);
-  from.classList.add("active");
+  // Mantém a página atual visível por baixo o tempo todo (evita marrom)
+  from.classList.remove(
+    "next-ready",
+    "prev-ready",
+    "flipping-forward",
+    "flipping-back"
+  );
+  clearInlineFlipStyles(from);
+  from.classList.add("active", "under-flip");
 
   clearFlipClasses(to);
   preparePair(fromIndex, toIndex);
 
+  // Força estilo inicial -180deg antes da animação
+  to.style.transform = "rotateY(-180deg)";
   void to.offsetWidth;
   to.classList.add("flipping-back");
 

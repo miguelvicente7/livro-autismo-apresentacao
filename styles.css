@@ -156,6 +156,10 @@ body {
   z-index: 2;
   border-radius: 2px 12px 12px 2px;
   overflow: hidden;
+  /* Sempre papel por baixo — no meio da virada 3D não aparece o couro marrom */
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.06) 0%, transparent 4%),
+    linear-gradient(180deg, #fffef9 0%, var(--paper) 60%, var(--paper-shadow) 100%);
 }
 
 /* Pages */
@@ -246,11 +250,12 @@ body {
   opacity: 1;
   pointer-events: none;
   will-change: transform;
-  animation: flipForward var(--flip-ms) ease-in-out forwards;
+  /* both: aplica o 0% antes do start — evita frame “vazio” */
+  animation: flipForward var(--flip-ms) ease-in-out both;
 }
 
 .page.flipping-forward .fold-shade {
-  animation: foldDuringFlip var(--flip-ms) ease-in-out forwards;
+  animation: foldDuringFlip var(--flip-ms) ease-in-out both;
 }
 
 .page.flipping-back {
@@ -258,11 +263,18 @@ body {
   opacity: 1;
   pointer-events: none;
   will-change: transform;
-  animation: flipBack var(--flip-ms) ease-in-out forwards;
+  /* Estado inicial explícito: verso virado, senão um frame aparece em 0deg */
+  transform: rotateY(-180deg);
+  animation: flipBack var(--flip-ms) ease-in-out both;
 }
 
 .page.flipping-back .fold-shade {
-  animation: foldDuringFlip var(--flip-ms) ease-in-out forwards;
+  animation: foldDuringFlip var(--flip-ms) ease-in-out both;
+}
+
+/* Página atual fica por baixo durante o retorno */
+.page.active.under-flip {
+  z-index: 2;
 }
 
 /* Só transform: box-shadow animado força repaint a cada frame no mobile */

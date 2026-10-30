@@ -228,53 +228,28 @@ body {
   z-index: 3;
 }
 
-.page.next-ready {
+/* Troca simples (sem flip 3D) — estável em mobile e desktop */
+.page.is-entering {
   opacity: 1;
+  z-index: 3;
+  animation: pageFadeIn 220ms ease-out both;
+}
+
+.page.is-leaving {
+  opacity: 0;
   z-index: 2;
   pointer-events: none;
+  animation: pageFadeOut 180ms ease-in both;
 }
 
-.page.next-ready .under-dim {
-  animation: underDim var(--flip-ms) ease-in-out forwards;
+@keyframes pageFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-.page.prev-ready {
-  opacity: 1;
-  z-index: 2;
-  pointer-events: none;
-  transform: rotateY(-180deg);
-}
-
-.page.flipping-forward {
-  z-index: 10;
-  opacity: 1;
-  pointer-events: none;
-  will-change: transform;
-  /* both: aplica o 0% antes do start — evita frame “vazio” */
-  animation: flipForward var(--flip-ms) ease-in-out both;
-}
-
-.page.flipping-forward .fold-shade {
-  animation: foldDuringFlip var(--flip-ms) ease-in-out both;
-}
-
-.page.flipping-back {
-  z-index: 10;
-  opacity: 1;
-  pointer-events: none;
-  will-change: transform;
-  /* Estado inicial explícito: verso virado, senão um frame aparece em 0deg */
-  transform: rotateY(-180deg);
-  animation: flipBack var(--flip-ms) ease-in-out both;
-}
-
-.page.flipping-back .fold-shade {
-  animation: foldDuringFlip var(--flip-ms) ease-in-out both;
-}
-
-/* Página atual fica por baixo durante o retorno */
-.page.active.under-flip {
-  z-index: 2;
+@keyframes pageFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 /* Só transform: box-shadow animado força repaint a cada frame no mobile */
@@ -929,26 +904,32 @@ body {
   margin-bottom: 0.5rem;
 }
 
-/* Edge click zones */
+/* Edge click zones — sempre clicáveis por cima da folha */
 .edge-btn {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 18%;
+  width: 22%;
   border: none;
   background: transparent;
   cursor: pointer;
-  z-index: 20;
+  z-index: 30;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.edge-btn:disabled {
+  cursor: default;
+  pointer-events: none;
 }
 
 .edge-prev { left: 0; }
 .edge-next { right: 0; }
 
-.edge-next:hover {
+.edge-next:hover:not(:disabled) {
   background: linear-gradient(90deg, transparent, rgba(212, 165, 116, 0.12));
 }
 
-.edge-prev:hover {
+.edge-prev:hover:not(:disabled) {
   background: linear-gradient(270deg, transparent, rgba(212, 165, 116, 0.12));
 }
 
@@ -1134,9 +1115,7 @@ body {
   pointer-events: auto;
 }
 
-.book-shell.is-flipping .edge-btn {
-  pointer-events: none;
-}
+/* (removido) não bloquear bordas durante transição */
 
 /* Tablet */
 @media (max-width: 900px) {
@@ -1277,9 +1256,10 @@ body {
     font-size: 0.95rem;
   }
 
-  /* No celular o swipe substitui as bordas clicáveis */
+  /* Celular: bordas menores, swipe continua ativo */
   .edge-btn {
-    display: none !important;
+    width: 16%;
+    display: block !important;
   }
 
   .flip-hint {

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cadastre-se - Academia do Miguel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="checkout.css">
+</head>
+<body>
+
+  <header class="checkout-header">
+    <div class="container checkout-header-inner">
+      <a href="index.html" class="logo">
+        <span class="logo-icon dark">AM</span>
+        <div class="logo-text">
+          <span class="logo-name">Academia</span>
+          <span class="logo-sub">do Miguel</span>
+        </div>
+      </a>
+      <div class="checkout-contact">
+        <p><strong>AM - LAGES, SC</strong></p>
+        <p>(49) 98812-1965</p>
+        <p>AV DOM PEDRO II, 2235, LAGES - SC</p>
+        <p>contato@academiadomiguel.com.br</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="container checkout-main">
+    <div class="checkout-grid">
+      <div class="checkout-form-section">
+        <h1>Cadastre-se para comprar</h1>
+        <p class="subtitle">Informe seus dados para continuar:</p>
+
+        <form id="checkout-form">
+          <div class="field">
+            <label for="nome">Nome completo</label>
+            <input type="text" id="nome" placeholder="Digite seu nome completo" required>
+          </div>
+          <div class="field">
+            <label for="cpf">CPF</label>
+            <input type="text" id="cpf" placeholder="Digite seu CPF" required>
+          </div>
+          <div class="field">
+            <label for="nascimento">Data de Nascimento</label>
+            <input type="text" id="nascimento" placeholder="dd/mm/aaaa" required>
+          </div>
+          <div class="field">
+            <label for="email">E-mail</label>
+            <input type="email" id="email" placeholder="Digite seu melhor e-mail" required>
+          </div>
+          <div class="field">
+            <label for="telefone">Telefone</label>
+            <input type="tel" id="telefone" placeholder="Digite seu telefone" required>
+          </div>
+          <div class="field">
+            <label for="cep">CEP</label>
+            <input type="text" id="cep" placeholder="Digite seu CEP" required>
+          </div>
+          <button type="submit" class="btn-submit">Continuar para pagamento</button>
+        </form>
+      </div>
+
+      <div class="checkout-summary-section">
+        <p class="summary-label">Resumo do seu pedido</p>
+        <div class="summary-card">
+          <div class="summary-plan">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+            <div>
+              <span class="plan-label">Plano selecionado</span>
+              <span class="plan-name" id="plan-name">Start - Recorrente - Am26</span>
+            </div>
+          </div>
+
+          <div class="summary-price">
+            <span>Será Cobrada Hoje</span>
+            <span class="price" id="plan-price">R$ 64,95</span>
+          </div>
+          <button type="button" class="link-green" id="btn-parcelas">Detalhar parcelas</button>
+          <div class="parcelas-detail hidden" id="parcelas-detail">
+            <p>1ª parcela: <span id="parcela-1">R$ 64,95</span> (hoje)</p>
+            <p>Demais parcelas: <span id="parcela-demais">R$ 129,90 mensal</span></p>
+          </div>
+
+          <div class="summary-coupon">
+            <div class="coupon-header">
+              <span>Cupom De Desconto</span>
+              <button type="button" class="link-green" id="btn-remove-coupon">[Remover]</button>
+            </div>
+            <p class="coupon-code" id="coupon-code">PRIMEIRA50</p>
+            <p class="coupon-applied">DESCONTO APLICADO:</p>
+            <p class="coupon-discount">PARCELA 1: 50%</p>
+          </div>
+
+          <div class="summary-includes">
+            <p>Esse Plano Inclui</p>
+            <ul id="plan-includes">
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> MUSCULAÇÃO</li>
+            </ul>
+          </div>
+        </div>
+        <a href="index.html#planos" class="back-link">← Voltar e escolher outro plano</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="checkout.js"></script>
+</body>
+</html>

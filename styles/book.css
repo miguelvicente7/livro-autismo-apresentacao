@@ -8,8 +8,8 @@
   --accent: #0f766e;
   --accent-soft: #ccfbf1;
   --border: #e7e5e4;
-  --font-body: "Literata", Georgia, serif;
-  --font-ui: "Source Sans 3", system-ui, sans-serif;
+  --font-body: var(--font-literata), Georgia, serif;
+  --font-ui: var(--font-source-sans), system-ui, sans-serif;
   --flip-ms: 650ms;
 }
 
@@ -19,12 +19,13 @@
   padding: 0;
 }
 
-html, body {
+html:has(.book-root),
+body:has(.book-root) {
   height: 100%;
   height: 100dvh;
 }
 
-body {
+body:has(.book-root) {
   font-family: var(--font-body);
   color: var(--ink);
   line-height: 1.75;
@@ -35,6 +36,13 @@ body {
   text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+}
+
+.book-root {
+  font-family: var(--font-body);
+  color: var(--ink);
+  line-height: 1.75;
+  min-height: 100dvh;
 }
 
 /* Header */
@@ -1091,12 +1099,13 @@ body {
 }
 
 .toc-author {
-  margin-top: auto;
-  padding: 14px 20px 18px;
-  border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.toc-nav button.toc-locked {
+  opacity: 0.72;
 }
 
 .toc-author-label {

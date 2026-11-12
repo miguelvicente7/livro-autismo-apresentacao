@@ -1,0 +1,10 @@
+:root {
+  --font-body: var(--font-literata), Georgia, serif;
+  --font-ui: var(--font-source-sans), system-ui, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}

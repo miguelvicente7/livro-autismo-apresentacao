@@ -1,15 +1,43 @@
-# Site estático mínimo (sem Nginx)
-FROM busybox:1.37-uclibc
+FROM node:22-alpine AS base
 
-WORKDIR /www
+RUN apk add --no-cache libc6-compat
+ENV NEXT_TELEMETRY_DISABLED=1
+WORKDIR /app
 
-COPY index.html styles.css script.js \
-     checkout.html checkout.css checkout.js \
-     ./
+FROM base AS deps
 
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+FROM base AS builder
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+ENV NODE_ENV=production
+RUN npm run build
+
+FROM node:22-alpine AS runner
+
+RUN apk add --no-cache curl
+ENV NODE_ENV=production
+ENV PORT=4500
+ENV HOSTNAME=0.0.0.0
+ENV TZ=America/Sao_Paulo
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN addgroup --system --gid 1001 nodejs \
+  && adduser --system --uid 1001 nextjs
+
+WORKDIR /app
+
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
 EXPOSE 4500
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:4500/ > /dev/null || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD curl -f http://127.0.0.1:4500/api/health || exit 1
 
-CMD ["httpd", "-f", "-v", "-p", "4500", "-h", "/www"]
+CMD ["node", "server.js"]

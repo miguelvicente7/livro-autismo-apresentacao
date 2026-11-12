@@ -322,7 +322,7 @@ export default function BookPages() {
     </section>
 
     {/* 19 */}
-    <section className="page" data-title="19. Emocões">
+    <section className="page" data-title="19. Emoções">
       <span className="chapter-num">Capítulo 19</span>
       <h2>Emoções e autorregulação</h2>
       <p>Nomear emoções ajuda. Escalas de humor, pausas e espaços de calma são aliados.</p>

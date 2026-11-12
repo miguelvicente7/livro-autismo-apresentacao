@@ -149,7 +149,6 @@ export default function BookReader() {
     let current = 0;
     let flipping = false;
     let flipTimer: number | null = null;
-    let flipTarget: number | null = null;
     let suppressClickUntil = 0;
     let swipeStartX = 0;
     let swipeStartY = 0;
@@ -287,7 +286,6 @@ export default function BookReader() {
 
       current = safeIndex;
       flipping = false;
-      flipTarget = null;
       bookShell.classList.remove("is-flipping");
       scrollPageToTop(target);
       updateUI();
@@ -303,9 +301,7 @@ export default function BookReader() {
     };
 
     const flipForward = () => {
-      if (current >= pages.length - 1) return;
-      if (flipping) settle(flipTarget ?? current);
-      if (current >= pages.length - 1) return;
+      if (flipping || current >= pages.length - 1) return;
 
       const fromIndex = current;
       const toIndex = fromIndex + 1;
@@ -321,7 +317,6 @@ export default function BookReader() {
       }
 
       flipping = true;
-      flipTarget = toIndex;
       bookShell.classList.add("is-flipping");
 
       clearPageMotion(to);
@@ -342,9 +337,7 @@ export default function BookReader() {
     };
 
     const flipBack = () => {
-      if (current <= 0) return;
-      if (flipping) settle(flipTarget ?? current);
-      if (current <= 0) return;
+      if (flipping || current <= 0) return;
 
       const fromIndex = current;
       const toIndex = fromIndex - 1;
@@ -358,7 +351,6 @@ export default function BookReader() {
       }
 
       flipping = true;
-      flipTarget = toIndex;
       bookShell.classList.add("is-flipping");
 
       from.classList.remove("next-ready", "flipping-forward", "flipping-back");
@@ -384,14 +376,13 @@ export default function BookReader() {
       if (index < 0 || index >= pages.length) return;
       if (!guardAccess(index)) return;
 
-      if (flipping) settle(flipTarget ?? current);
-      if (index === current) return;
-
       const distance = Math.abs(index - current);
-      if (instant || distance > 1 || prefersReducedMotion()) {
+      if (flipping || instant || distance > 1 || prefersReducedMotion()) {
         settle(index);
         return;
       }
+
+      if (index === current) return;
 
       if (index > current) flipForward();
       else flipBack();
@@ -400,16 +391,12 @@ export default function BookReader() {
     goToPageRef.current = goTo;
 
     const goNext = () => {
-      if (current >= pages.length - 1) return;
-      if (flipping) settle(flipTarget ?? current);
-      if (current >= pages.length - 1) return;
+      if (flipping) return;
       flipForward();
     };
 
     const goPrev = () => {
-      if (current <= 0) return;
-      if (flipping) settle(flipTarget ?? current);
-      if (current <= 0) return;
+      if (flipping) return;
       flipBack();
     };
 
@@ -759,7 +746,6 @@ export default function BookReader() {
         initialMode={authMode}
         onClose={() => {
           setAuthOpen(false);
-          if (!user) pendingPageRef.current = null;
         }}
         onSuccess={handleAuthSuccess}
       />

@@ -1,4 +1,5 @@
 import type { CmsUser } from "./cmsAuth";
+import { withBasePath } from "./basePath";
 
 export type AuthMeResponse = {
   authenticated: boolean;
@@ -25,7 +26,7 @@ const parseError = async (response: Response) => {
 
 export const fetchMe = async (): Promise<AuthMeResponse> => {
   try {
-    const response = await fetch("/api/auth/me", {
+    const response = await fetch(withBasePath("/api/auth/me"), {
       method: "GET",
       credentials: "same-origin",
       cache: "no-store",
@@ -59,7 +60,7 @@ export const fetchMe = async (): Promise<AuthMeResponse> => {
 };
 
 export const loginRequest = async (credentials: AuthCredentials) => {
-  const response = await fetch("/api/auth/login", {
+  const response = await fetch(withBasePath("/api/auth/login"), {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
@@ -74,7 +75,7 @@ export const loginRequest = async (credentials: AuthCredentials) => {
 };
 
 export const registerRequest = async (credentials: AuthCredentials) => {
-  const response = await fetch("/api/auth/register", {
+  const response = await fetch(withBasePath("/api/auth/register"), {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
@@ -89,7 +90,7 @@ export const registerRequest = async (credentials: AuthCredentials) => {
 };
 
 export const logoutRequest = async () => {
-  const response = await fetch("/api/auth/logout", {
+  const response = await fetch(withBasePath("/api/auth/logout"), {
     method: "POST",
     credentials: "same-origin",
   });

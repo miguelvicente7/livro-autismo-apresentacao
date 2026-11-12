@@ -38,6 +38,6 @@ USER nextjs
 EXPOSE 4500
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD curl -f http://127.0.0.1:4500/api/health || exit 1
+  CMD curl -f http://127.0.0.1:4500/livro-autismo/api/health || exit 1
 
 CMD ["node", "server.js"]

@@ -12,11 +12,16 @@ const shouldUseSecureCookie = () => {
   return process.env.NODE_ENV === "production";
 };
 
+const cookiePath = () =>
+  process.env.AUTH_COOKIE_PATH?.trim() ||
+  process.env.NEXT_PUBLIC_BASE_PATH?.trim() ||
+  "/";
+
 const cookieOptions = (maxAge: number) => ({
   httpOnly: true,
   sameSite: "lax" as const,
   secure: shouldUseSecureCookie(),
-  path: "/",
+  path: cookiePath(),
   maxAge,
 });
 

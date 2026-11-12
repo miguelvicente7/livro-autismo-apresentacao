@@ -26,7 +26,12 @@ export default function AuthModal({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setPassword("");
+      setError("");
+      setLoading(false);
+      return;
+    }
     setMode(initialMode);
     setError("");
     setLoading(false);

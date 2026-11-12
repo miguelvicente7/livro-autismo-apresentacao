@@ -20,6 +20,22 @@ const FLIP_STATE_CLASSES = [
   "is-entering",
 ];
 
+type NavUiState = {
+  title: string;
+  progressPct: number;
+  prevDisabled: boolean;
+  nextDisabled: boolean;
+  nextLabel: string;
+};
+
+const INITIAL_NAV_UI: NavUiState = {
+  title: "Capa",
+  progressPct: 4,
+  prevDisabled: true,
+  nextDisabled: false,
+  nextLabel: "Virar página →",
+};
+
 export default function BookReader() {
   const rootRef = useRef<HTMLDivElement>(null);
   const isAuthenticatedRef = useRef(false);
@@ -32,6 +48,8 @@ export default function BookReader() {
     () => undefined
   );
   const refreshTocLockRef = useRef<() => void>(() => undefined);
+  const setNavUiRef = useRef<(next: NavUiState) => void>(() => undefined);
+  const setTocOpenRef = useRef<(open: boolean) => void>(() => undefined);
 
   const [user, setUser] = useState<CmsUser | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -39,11 +57,17 @@ export default function BookReader() {
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
+  const [sessionRetryLoading, setSessionRetryLoading] = useState(false);
   const [authNotice, setAuthNotice] = useState("");
+  const [sessionTransient, setSessionTransient] = useState(false);
+  const [tocOpen, setTocOpen] = useState(false);
+  const [navUi, setNavUi] = useState<NavUiState>(INITIAL_NAV_UI);
 
   isAuthenticatedRef.current = Boolean(user);
   authReadyRef.current = authReady;
   authOpenRef.current = authOpen;
+  setNavUiRef.current = setNavUi;
+  setTocOpenRef.current = setTocOpen;
 
   requireAuthRef.current = () => {
     setPaywallOpen(true);
@@ -51,41 +75,48 @@ export default function BookReader() {
     setAuthOpen(true);
   };
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadSession = async (options?: { isRetry?: boolean }) => {
+    const isRetry = options?.isRetry === true;
+    if (isRetry) setSessionRetryLoading(true);
 
-    const loadSession = async () => {
-      try {
-        const me = await fetchMe();
-        if (cancelled) return;
+    try {
+      const me = await fetchMe();
 
-        if (me.authenticated && me.user) {
-          setUser(me.user);
-          setAuthNotice("");
-        } else if (me.transient) {
-          setAuthNotice(
-            me.error ||
-              "Não foi possível validar a sessão agora. Tente novamente em instantes."
-          );
-        }
-      } catch {
-        if (!cancelled) {
-          setAuthNotice("Falha ao verificar login. Tente novamente.");
-        }
-      } finally {
-        if (!cancelled) setAuthReady(true);
+      if (me.authenticated && me.user) {
+        setUser(me.user);
+        setAuthNotice("");
+        setSessionTransient(false);
+        return;
       }
-    };
 
+      setUser(null);
+      if (me.transient) {
+        setSessionTransient(true);
+        setAuthNotice(
+          me.error ||
+            "Não foi possível validar a sessão agora. Tente novamente em instantes."
+        );
+        return;
+      }
+
+      setSessionTransient(false);
+      setAuthNotice("");
+    } catch {
+      setUser(null);
+      setSessionTransient(true);
+      setAuthNotice("Falha ao verificar login. Tente novamente.");
+    } finally {
+      setAuthReady(true);
+      if (isRetry) setSessionRetryLoading(false);
+    }
+  };
+
+  useEffect(() => {
     void loadSession();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   useEffect(() => {
     if (!authReady) return;
-
     refreshTocLockRef.current();
 
     const pending = pendingPageRef.current;
@@ -123,8 +154,6 @@ export default function BookReader() {
     const nextBtn = root.querySelector<HTMLButtonElement>("#next-btn");
     const edgePrev = root.querySelector<HTMLButtonElement>("#edge-prev");
     const edgeNext = root.querySelector<HTMLButtonElement>("#edge-next");
-    const progressBar = root.querySelector<HTMLElement>("#progress-bar");
-    const pageIndicator = root.querySelector<HTMLElement>("#page-indicator");
     const btnStart = root.querySelector<HTMLButtonElement>("#btn-start");
     const btnToc = root.querySelector<HTMLButtonElement>("#btn-toc");
     const stage = root.querySelector<HTMLElement>(".stage");
@@ -139,9 +168,7 @@ export default function BookReader() {
       !prevBtn ||
       !nextBtn ||
       !edgePrev ||
-      !edgeNext ||
-      !progressBar ||
-      !pageIndicator
+      !edgeNext
     ) {
       return;
     }
@@ -226,13 +253,13 @@ export default function BookReader() {
 
     const updateUI = () => {
       const total = pages.length;
-      progressBar.style.width = `${((current + 1) / total) * 100}%`;
-      pageIndicator.textContent = pages[current].dataset.title || "";
-      prevBtn.disabled = current === 0;
-      nextBtn.disabled = current === total - 1;
-      edgePrev.disabled = current === 0;
-      edgeNext.disabled = current === total - 1;
-      nextBtn.textContent = current === total - 1 ? "Fim" : "Virar página →";
+      setNavUiRef.current({
+        title: pages[current].dataset.title || "",
+        progressPct: ((current + 1) / total) * 100,
+        prevDisabled: current === 0,
+        nextDisabled: current === total - 1,
+        nextLabel: current === total - 1 ? "Fim" : "Virar página →",
+      });
 
       tocButtons.forEach((btn, i) => {
         btn.classList.toggle("active", i === current);
@@ -403,18 +430,15 @@ export default function BookReader() {
     const openToc = () => {
       toc.classList.add("open");
       tocOverlay.classList.add("open");
-      tocToggle.setAttribute("aria-expanded", "true");
+      setTocOpenRef.current(true);
       updateUI();
     };
 
     const closeToc = () => {
       toc.classList.remove("open");
       tocOverlay.classList.remove("open");
-      tocToggle.setAttribute("aria-expanded", "false");
+      setTocOpenRef.current(false);
     };
-
-    tocToggle.setAttribute("aria-expanded", "false");
-    tocToggle.setAttribute("aria-controls", "toc");
 
     const handleTocToggle = () => openToc();
     const handleTocClose = () => closeToc();
@@ -605,13 +629,22 @@ export default function BookReader() {
 
   const handleOpenLogin = () => {
     setAuthNotice("");
+    setSessionTransient(false);
     setAuthMode("login");
     setAuthOpen(true);
+  };
+
+  const handleAuthCancel = () => {
+    setAuthOpen(false);
+    setPaywallOpen(false);
+    pendingPageRef.current = null;
+    goToCoverRef.current();
   };
 
   const handleAuthSuccess = (nextUser: CmsUser) => {
     setUser(nextUser);
     setAuthNotice("");
+    setSessionTransient(false);
     setAuthOpen(false);
     setPaywallOpen(false);
     refreshTocLockRef.current();
@@ -626,6 +659,7 @@ export default function BookReader() {
   const handleLogout = async () => {
     setLogoutLoading(true);
     setAuthNotice("");
+    setSessionTransient(false);
     try {
       await logoutRequest();
       setUser(null);
@@ -644,8 +678,13 @@ export default function BookReader() {
 
   const handlePaywallDismiss = () => {
     setPaywallOpen(false);
+    setAuthOpen(false);
     pendingPageRef.current = null;
     goToCoverRef.current();
+  };
+
+  const handleSessionRetry = () => {
+    void loadSession({ isRetry: true });
   };
 
   return (
@@ -653,7 +692,12 @@ export default function BookReader() {
       <aside className="toc" id="toc">
         <div className="toc-header">
           <span className="toc-brand">Livro Digital</span>
-          <button className="toc-close" id="toc-close" aria-label="Fechar sumário">
+          <button
+            type="button"
+            className="toc-close"
+            id="toc-close"
+            aria-label="Fechar sumário"
+          >
             &times;
           </button>
         </div>
@@ -687,22 +731,43 @@ export default function BookReader() {
             </button>
           )}
           {authNotice ? <p className="toc-auth-notice">{authNotice}</p> : null}
+          {sessionTransient ? (
+            <button
+              type="button"
+              className="toc-auth-btn secondary"
+              onClick={handleSessionRetry}
+              disabled={sessionRetryLoading}
+            >
+              {sessionRetryLoading ? "Verificando…" : "Tentar novamente"}
+            </button>
+          ) : null}
         </div>
       </aside>
 
       <div className="toc-overlay" id="toc-overlay" />
 
       <header className="book-header">
-        <button className="toc-toggle" id="toc-toggle" aria-label="Abrir sumário">
+        <button
+          type="button"
+          className="toc-toggle"
+          id="toc-toggle"
+          aria-label="Abrir sumário"
+          aria-expanded={tocOpen}
+          aria-controls="toc"
+        >
           <span />
           <span />
           <span />
         </button>
         <div className="progress-wrap">
-          <div className="progress-bar" id="progress-bar" />
+          <div
+            className="progress-bar"
+            id="progress-bar"
+            style={{ width: `${navUi.progressPct}%` }}
+          />
         </div>
         <span className="page-indicator" id="page-indicator">
-          Capa
+          {navUi.title}
         </span>
       </header>
 
@@ -713,25 +778,39 @@ export default function BookReader() {
             <BookPages />
           </main>
           <button
+            type="button"
             className="edge-btn edge-prev"
             id="edge-prev"
             aria-label="Página anterior"
+            disabled={navUi.prevDisabled}
           />
           <button
+            type="button"
             className="edge-btn edge-next"
             id="edge-next"
             aria-label="Próxima página"
+            disabled={navUi.nextDisabled}
           />
           <p className="flip-hint">Arraste ou clique nas bordas para virar a página</p>
         </div>
       </div>
 
       <nav className="book-nav">
-        <button className="nav-btn" id="prev-btn" disabled>
+        <button
+          type="button"
+          className="nav-btn"
+          id="prev-btn"
+          disabled={navUi.prevDisabled}
+        >
           ← Anterior
         </button>
-        <button className="nav-btn primary" id="next-btn">
-          Virar página →
+        <button
+          type="button"
+          className="nav-btn primary"
+          id="next-btn"
+          disabled={navUi.nextDisabled}
+        >
+          {navUi.nextLabel}
         </button>
       </nav>
 
@@ -744,9 +823,7 @@ export default function BookReader() {
       <AuthModal
         open={authOpen}
         initialMode={authMode}
-        onClose={() => {
-          setAuthOpen(false);
-        }}
+        onClose={handleAuthCancel}
         onSuccess={handleAuthSuccess}
       />
     </div>

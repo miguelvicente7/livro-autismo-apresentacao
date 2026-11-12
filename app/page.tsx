@@ -1,6 +1,6 @@
-import BookReader from "@/components/BookReader";
+import BookReaderClient from "@/components/BookReaderClient";
 import "@/styles/book.css";
 
 export default function HomePage() {
-  return <BookReader />;
+  return <BookReaderClient />;
 }

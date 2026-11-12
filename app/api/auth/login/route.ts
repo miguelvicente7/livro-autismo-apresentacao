@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { CmsAuthError, loginWithCms } from "@/lib/cmsAuth";
 import { setSessionToken } from "@/lib/authSession";
+import { parseRequestJson } from "@/lib/parseRequestJson";
 
 type Body = {
   email?: string;
@@ -9,9 +10,11 @@ type Body = {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as Body;
-    const email = body.email?.trim().toLowerCase() || "";
-    const password = body.password || "";
+    const parsed = await parseRequestJson<Body>(request);
+    if (!parsed.ok) return parsed.response;
+
+    const email = parsed.data.email?.trim().toLowerCase() || "";
+    const password = parsed.data.password || "";
 
     if (!email || !password) {
       return NextResponse.json(

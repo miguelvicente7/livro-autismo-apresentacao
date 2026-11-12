@@ -33,6 +33,8 @@ const getPath = (envKey: string, fallback: string) => {
   return value.startsWith("/") ? value : `/${value}`;
 };
 
+const getCmsApiKey = () => process.env.CMS_API_KEY?.trim() || "";
+
 const parseJsonSafe = async (response: Response) => {
   try {
     return await response.json();
@@ -46,6 +48,7 @@ const extractErrorMessage = (payload: unknown, fallback: string) => {
   const data = payload as Record<string, unknown>;
   if (typeof data.message === "string" && data.message.trim()) return data.message;
   if (typeof data.error === "string" && data.error.trim()) return data.error;
+  if (typeof data.msg === "string" && data.msg.trim()) return data.msg;
   if (data.error && typeof data.error === "object") {
     const nested = data.error as Record<string, unknown>;
     if (typeof nested.message === "string" && nested.message.trim()) {
@@ -55,18 +58,33 @@ const extractErrorMessage = (payload: unknown, fallback: string) => {
   return fallback;
 };
 
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+
+const unwrapData = (payload: unknown): Record<string, unknown> | null => {
+  const root = asRecord(payload);
+  if (!root) return null;
+  const nested = asRecord(root.data);
+  return nested ?? root;
+};
+
 const normalizeUser = (raw: unknown, fallbackEmail?: string): CmsUser => {
-  if (!raw || typeof raw !== "object") {
+  const root = asRecord(raw);
+  if (!root) {
     return {
       id: "unknown",
       email: fallbackEmail || "",
     };
   }
 
-  const data = raw as Record<string, unknown>;
-  const idValue = data.id ?? data.uuid ?? data._id;
-  const emailValue = data.email ?? fallbackEmail ?? "";
-  const nameValue = data.name ?? data.nome ?? data.username;
+  // ControleEstoque CMS: { session: { customer } } ou { customer }
+  const session = asRecord(root.session);
+  const customer = asRecord(root.customer) ?? asRecord(session?.customer);
+  const source = customer ?? root;
+
+  const idValue = source.id ?? source.uuid ?? source._id;
+  const emailValue = source.email ?? fallbackEmail ?? "";
+  const nameValue = source.name ?? source.nome ?? source.username;
 
   return {
     id: idValue != null ? String(idValue) : "unknown",
@@ -83,28 +101,18 @@ const normalizeAuthResult = (
     throw new CmsAuthError("Resposta inválida do CMS.", 502);
   }
 
-  const data = payload as Record<string, unknown>;
+  const data = unwrapData(payload) ?? (payload as Record<string, unknown>);
   let token = "";
 
   if (typeof data.token === "string") token = data.token;
   else if (typeof data.accessToken === "string") token = data.accessToken;
   else if (typeof data.access_token === "string") token = data.access_token;
-  else if (data.data && typeof data.data === "object") {
-    const nested = data.data as Record<string, unknown>;
-    if (typeof nested.token === "string") token = nested.token;
-    else if (typeof nested.accessToken === "string") token = nested.accessToken;
-  }
 
   if (!token) {
     throw new CmsAuthError("CMS não retornou token de sessão.", 502);
   }
 
-  const userRaw =
-    data.user ??
-    (data.data && typeof data.data === "object"
-      ? (data.data as Record<string, unknown>).user
-      : undefined) ??
-    data;
+  const userRaw = data.user ?? data.session ?? data;
 
   return {
     token,
@@ -112,19 +120,36 @@ const normalizeAuthResult = (
   };
 };
 
+type PostCredentialsOptions = {
+  includeName?: boolean;
+};
+
 const postCredentials = async (
   path: string,
   email: string,
   password: string,
-  fallbackError: string
+  fallbackError: string,
+  options: PostCredentialsOptions = {}
 ): Promise<CmsAuthResult> => {
+  const apiKey = getCmsApiKey();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  // CMS ControleEstoque exige Bearer com API key em /api/v1/auth/*
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+
+  const body: Record<string, string> = { email, password };
+  if (options.includeName) {
+    body.name = email.split("@")[0] || email;
+  }
+
   const response = await fetch(`${getCmsBaseUrl()}${path}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({ email, password }),
+    headers,
+    body: JSON.stringify(body),
     cache: "no-store",
   });
 
@@ -142,7 +167,7 @@ const postCredentials = async (
 
 export const loginWithCms = (email: string, password: string) =>
   postCredentials(
-    getPath("CMS_LOGIN_PATH", "/auth/login"),
+    getPath("CMS_LOGIN_PATH", "/api/v1/auth/login"),
     email,
     password,
     "Não foi possível entrar. Verifique e-mail e senha."
@@ -150,15 +175,16 @@ export const loginWithCms = (email: string, password: string) =>
 
 export const registerWithCms = (email: string, password: string) =>
   postCredentials(
-    getPath("CMS_REGISTER_PATH", "/auth/register"),
+    getPath("CMS_REGISTER_PATH", "/api/v1/auth/register"),
     email,
     password,
-    "Não foi possível criar a conta."
+    "Não foi possível criar a conta.",
+    { includeName: true }
   );
 
 export const fetchCmsUser = async (token: string): Promise<CmsUser> => {
   const response = await fetch(
-    `${getCmsBaseUrl()}${getPath("CMS_ME_PATH", "/auth/me")}`,
+    `${getCmsBaseUrl()}${getPath("CMS_ME_PATH", "/api/v1/auth/session")}`,
     {
       method: "GET",
       headers: {
@@ -178,10 +204,6 @@ export const fetchCmsUser = async (token: string): Promise<CmsUser> => {
     );
   }
 
-  const userRaw =
-    payload && typeof payload === "object"
-      ? ((payload as Record<string, unknown>).user ?? payload)
-      : payload;
-
-  return normalizeUser(userRaw);
+  const data = unwrapData(payload) ?? asRecord(payload);
+  return normalizeUser(data, undefined);
 };

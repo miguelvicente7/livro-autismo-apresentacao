@@ -33,8 +33,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
-      <body className={`${literata.variable} ${sourceSans.variable}`}>
+    <html lang="pt-BR" suppressHydrationWarning>
+      <body
+        className={`${literata.variable} ${sourceSans.variable}`}
+        suppressHydrationWarning
+      >
         {children}
       </body>
     </html>

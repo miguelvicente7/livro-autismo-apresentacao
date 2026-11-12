@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { CmsAuthError, fetchCmsUser } from "@/lib/cmsAuth";
 import { clearSessionToken, getSessionToken } from "@/lib/authSession";
+import { isSessionTokenRevoked } from "@/lib/revokedSessions";
 
 export async function GET() {
   try {
     const token = await getSessionToken();
     if (!token) {
+      return NextResponse.json({ authenticated: false, user: null });
+    }
+
+    if (isSessionTokenRevoked(token)) {
+      await clearSessionToken();
       return NextResponse.json({ authenticated: false, user: null });
     }
 
